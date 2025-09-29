@@ -3,7 +3,6 @@
 # Implements zero-downtime migration strategy with dual-IP overlap
 
 #Requires -Version 7.0
-#Requires -Modules Az.Network, Az.Resources
 
 <#
 .SYNOPSIS
@@ -67,6 +66,385 @@ $script:InventoryFile = ""
 $script:ErrorCount = 0
 $script:SuccessCount = 0
 
+<#
+.SYNOPSIS
+    Executes the discovery phase
+.DESCRIPTION
+    Discovers all Basic public IPs and creates initial inventory
+#>
+function Invoke-DiscoveryPhase {
+    [CmdletBinding()]
+    param()
+    
+    try {
+        Write-MigrationLog -Message "=== PHASE: DISCOVERY ===" -Level "Information"
+        
+        if ($DryRun) {
+            Write-MigrationLog -Message "DRY RUN MODE: Discovery will show what would be discovered" -Level "Warning"
+        }
+        
+        # Discover Basic public IPs
+        $inventory = Get-BasicPublicIps
+        
+        if ($inventory.Count -eq 0) {
+            Write-MigrationLog -Message "No Basic public IPs found. Migration not needed." -Level "Information"
+            return
+        }
+        
+        # Generate output file path
+        $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+        $script:InventoryFile = Join-Path -Path (Split-Path $ConfigPath -Parent) -ChildPath "..\Output\inventory_$timestamp.csv"
+        
+        # Export inventory
+        Export-MigrationInventory -Inventory $inventory -OutputPath $script:InventoryFile
+        
+        # Display summary by category
+        Write-MigrationLog -Message "`n=== DISCOVERY SUMMARY ===" -Level "Information"
+        Write-MigrationLog -Message "Total Basic Public IPs: $($inventory.Count)" -Level "Information"
+        
+        # By consumer type
+        $byConsumer = $inventory | Group-Object ConsumerType
+        Write-MigrationLog -Message "`nBy Consumer Type:" -Level "Information"
+        foreach ($group in $byConsumer) {
+            Write-MigrationLog -Message "  $($group.Name): $($group.Count)" -Level "Information"
+        }
+        
+        # By location
+        $byLocation = $inventory | Group-Object Location
+        Write-MigrationLog -Message "`nBy Location:" -Level "Information"
+        foreach ($group in $byLocation) {
+            Write-MigrationLog -Message "  $($group.Name): $($group.Count)" -Level "Information"
+        }
+        
+        Write-MigrationLog -Message "`nInventory exported to: $script:InventoryFile" -Level "Information"
+        
+    }
+    catch {
+        Write-MigrationLog -Message "Discovery phase failed: $($_.Exception.Message)" -Level "Error" -Exception $_.Exception
+        throw
+    }
+}
+
+<#
+.SYNOPSIS
+    Executes the creation phase
+.DESCRIPTION
+    Creates Standard public IPs and adds them as secondary configurations to NICs
+#>
+function Invoke-CreatePhase {
+    [CmdletBinding()]
+    param()
+    
+    try {
+        Write-MigrationLog -Message "=== PHASE: CREATE STANDARD PUBLIC IPs ===" -Level "Information"
+        
+        if ($DryRun) {
+            Write-MigrationLog -Message "DRY RUN MODE: No resources will be created" -Level "Warning"
+        }
+        
+        # Load inventory from latest discovery
+        $inventoryFiles = Get-ChildItem -Path (Join-Path -Path (Split-Path $ConfigPath -Parent) -ChildPath "..\Output") -Filter "inventory_*.csv" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+        
+        if ($inventoryFiles.Count -eq 0) {
+            throw "No inventory file found. Run Discovery phase first."
+        }
+        
+        $latestInventory = $inventoryFiles[0].FullName
+        Write-MigrationLog -Message "Loading inventory from: $latestInventory" -Level "Information"
+        
+        $inventory = Import-Csv -Path $latestInventory
+        
+        # Filter to only NICs and unattached (skip LBs and VPN gateways for automated processing)
+        $processable = $inventory | Where-Object { $_.ConsumerType -in @('nic', 'unattached') -and $_.MigrationStatus -eq 'pending' }
+        
+        if ($processable.Count -eq 0) {
+            Write-MigrationLog -Message "No IPs available for automated creation. Check inventory for LB/VPN items requiring manual migration." -Level "Warning"
+            return
+        }
+        
+        Write-MigrationLog -Message "Processing $($processable.Count) public IPs eligible for automated creation" -Level "Information"
+        
+        # Process each IP
+        foreach ($ip in $processable) {
+            try {
+                Write-MigrationLog -Message "`nProcessing: $($ip.Name) in $($ip.ResourceGroup)" -Level "Information"
+                Write-MigrationLog -Message "  Current IP: $($ip.IpAddress)" -Level "Information"
+                Write-MigrationLog -Message "  Consumer Type: $($ip.ConsumerType)" -Level "Information"
+                
+                if ($DryRun) {
+                    Write-MigrationLog -Message "  [DRY RUN] Would create Standard IP: $($ip.StandardIpName)" -Level "Information"
+                    Write-MigrationLog -Message "  [DRY RUN] Location: $($ip.Location)" -Level "Information"
+                    Write-MigrationLog -Message "  [DRY RUN] SKU: Standard, Allocation: Static" -Level "Information"
+                    
+                    if ($ip.ConsumerType -eq 'nic' -and $ip.NicName) {
+                        Write-MigrationLog -Message "  [DRY RUN] Would add secondary IP config to NIC: $($ip.NicName)" -Level "Information"
+                        Write-MigrationLog -Message "  [DRY RUN] Would validate NSG rules" -Level "Information"
+                    }
+                    
+                    $script:SuccessCount++
+                }
+                else {
+                    # Create Standard public IP
+                    $newIp = New-StandardPublicIp -Name $ip.StandardIpName -ResourceGroup $ip.ResourceGroup -Location $ip.Location
+                    
+                    # Update inventory object
+                    $ip.StandardIpAddress = $newIp.IpAddress
+                    $ip.StandardIpResourceId = $newIp.ResourceId
+                    $ip.MigrationTimestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+                    
+                    # If attached to NIC, add as secondary IP config
+                    if ($ip.ConsumerType -eq 'nic' -and $ip.NicName) {
+                        $ipConfigName = "ipconfig-std-$($ip.Name)"
+                        
+                        Add-SecondaryIpConfigToNic -NicName $ip.NicName -NicResourceGroup $ip.NicResourceGroup -IpConfigName $ipConfigName -PublicIpName $ip.StandardIpName
+                        
+                        $ip.Notes = "Secondary IP config '$ipConfigName' added to NIC"
+                        
+                        # Validate NSG rules
+                        if ($Global:Config.validation.validateNsgRules) {
+                            $nsgValid = Test-NsgRulesForNewIp -NicName $ip.NicName -NicResourceGroup $ip.NicResourceGroup -NewPublicIp $newIp.IpAddress
+                            
+                            if (-not $nsgValid) {
+                                $ip.Notes += "; NSG validation FAILED - manual review required"
+                                Write-MigrationLog -Message "  WARNING: NSG validation failed for $($ip.Name)" -Level "Warning"
+                            }
+                        }
+                    }
+                    
+                    $ip.MigrationStatus = "standard_created"
+                    $script:SuccessCount++
+                    
+                    Write-MigrationLog -Message "  SUCCESS: Standard IP created at $($newIp.IpAddress)" -Level "Information"
+                }
+            }
+            catch {
+                $script:ErrorCount++
+                $ip.MigrationStatus = "error"
+                $ip.Notes = "Error: $($_.Exception.Message)"
+                Write-MigrationLog -Message "  ERROR processing $($ip.Name): $($_.Exception.Message)" -Level "Error" -Exception $_.Exception
+            }
+        }
+        
+        # Save progress
+        if (-not $DryRun) {
+            $inventory | Export-Csv -Path $latestInventory -NoTypeInformation -Force
+            Write-MigrationLog -Message "Progress saved to inventory" -Level "Information"
+        }
+        
+        # Summary
+        Write-MigrationLog -Message "`n=== CREATE PHASE SUMMARY ===" -Level "Information"
+        Write-MigrationLog -Message "Total processed: $($processable.Count)" -Level "Information"
+        Write-MigrationLog -Message "Successful: $script:SuccessCount" -Level "Information"
+        Write-MigrationLog -Message "Errors: $script:ErrorCount" -Level "Information"
+        
+        if ($DryRun) {
+            Write-MigrationLog -Message "`n[DRY RUN] No actual changes were made" -Level "Warning"
+            Write-MigrationLog -Message "Run without -DryRun flag to execute actual creation" -Level "Information"
+        }
+        
+    }
+    catch {
+        Write-MigrationLog -Message "Create phase failed: $($_.Exception.Message)" -Level "Error" -Exception $_.Exception
+        throw
+    }
+}
+
+<#
+.SYNOPSIS
+    Executes the validation phase
+.DESCRIPTION
+    Validates connectivity and DNS resolution for Standard public IPs
+#>
+function Invoke-ValidatePhase {
+    [CmdletBinding()]
+    param()
+    
+    try {
+        Write-MigrationLog -Message "=== PHASE: VALIDATE STANDARD PUBLIC IPs ===" -Level "Information"
+        
+        if ($DryRun) {
+            Write-MigrationLog -Message "DRY RUN MODE: Validation will show what would be tested" -Level "Warning"
+        }
+        
+        # Load inventory
+        $inventoryFiles = Get-ChildItem -Path (Join-Path -Path (Split-Path $ConfigPath -Parent) -ChildPath "..\Output") -Filter "inventory_*.csv" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+        
+        if ($inventoryFiles.Count -eq 0) {
+            throw "No inventory file found. Run Discovery phase first."
+        }
+        
+        $latestInventory = $inventoryFiles[0].FullName
+        Write-MigrationLog -Message "Loading inventory from: $latestInventory" -Level "Information"
+        
+        $inventory = Import-Csv -Path $latestInventory
+        
+        # Filter to created Standard IPs
+        $toValidate = $inventory | Where-Object { $_.MigrationStatus -eq 'standard_created' -and $_.StandardIpAddress }
+        
+        if ($toValidate.Count -eq 0) {
+            Write-MigrationLog -Message "No Standard IPs found for validation. Run Create phase first." -Level "Warning"
+            return
+        }
+        
+        Write-MigrationLog -Message "Validating $($toValidate.Count) Standard public IPs" -Level "Information"
+        
+        foreach ($ip in $toValidate) {
+            Write-MigrationLog -Message "`nValidating: $($ip.Name) -> $($ip.StandardIpAddress)" -Level "Information"
+            
+            if ($DryRun) {
+                Write-MigrationLog -Message "  [DRY RUN] Would test connectivity to $($ip.StandardIpAddress)" -Level "Information"
+                Write-MigrationLog -Message "  [DRY RUN] Would validate NSG rules" -Level "Information"
+                Write-MigrationLog -Message "  [DRY RUN] Would check DNS resolution" -Level "Information"
+            }
+            else {
+                # Actual validation
+                $connectivityOk = Test-PublicIpConnectivity -IpAddress $ip.StandardIpAddress
+                
+                if ($ip.ConsumerType -eq 'nic' -and $ip.NicName) {
+                    $nsgOk = Test-NsgRulesForNewIp -NicName $ip.NicName -NicResourceGroup $ip.NicResourceGroup -NewPublicIp $ip.StandardIpAddress
+                }
+                
+                if ($connectivityOk) {
+                    $ip.MigrationStatus = "validated"
+                    Write-MigrationLog -Message "  VALIDATION PASSED" -Level "Information"
+                }
+                else {
+                    Write-MigrationLog -Message "  VALIDATION FAILED" -Level "Warning"
+                }
+            }
+        }
+        
+        if (-not $DryRun) {
+            $inventory | Export-Csv -Path $latestInventory -NoTypeInformation -Force
+        }
+        
+        Write-MigrationLog -Message "`n=== VALIDATION COMPLETE ===" -Level "Information"
+        
+    }
+    catch {
+        Write-MigrationLog -Message "Validate phase failed: $($_.Exception.Message)" -Level "Error" -Exception $_.Exception
+        throw
+    }
+}
+
+<#
+.SYNOPSIS
+    Executes the cleanup phase
+.DESCRIPTION
+    Removes Basic public IPs after soak period and successful cutover
+#>
+function Invoke-CleanupPhase {
+    [CmdletBinding()]
+    param()
+    
+    try {
+        Write-MigrationLog -Message "=== PHASE: CLEANUP BASIC PUBLIC IPs ===" -Level "Information"
+        
+        if ($DryRun) {
+            Write-MigrationLog -Message "DRY RUN MODE: No resources will be deleted" -Level "Warning"
+        }
+        
+        # Load inventory
+        $inventoryFiles = Get-ChildItem -Path (Join-Path -Path (Split-Path $ConfigPath -Parent) -ChildPath "..\Output") -Filter "inventory_*.csv" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+        
+        if ($inventoryFiles.Count -eq 0) {
+            throw "No inventory file found. Run Discovery phase first."
+        }
+        
+        $latestInventory = $inventoryFiles[0].FullName
+        Write-MigrationLog -Message "Loading inventory from: $latestInventory" -Level "Information"
+        
+        $inventory = Import-Csv -Path $latestInventory
+        
+        # Filter to validated IPs ready for cleanup
+        $toCleanup = $inventory | Where-Object { $_.MigrationStatus -eq 'validated' }
+        
+        if ($toCleanup.Count -eq 0) {
+            Write-MigrationLog -Message "No IPs ready for cleanup. Ensure Create and Validate phases completed successfully." -Level "Warning"
+            return
+        }
+        
+        # Check soak period
+        $soakHours = $Global:Config.migration.soakPeriodHours
+        Write-MigrationLog -Message "Checking soak period requirement: $soakHours hours" -Level "Information"
+        
+        $eligibleForCleanup = @()
+        
+        foreach ($ip in $toCleanup) {
+            if ($ip.MigrationTimestamp) {
+                $migrationTime = [DateTime]::Parse($ip.MigrationTimestamp)
+                $elapsed = (Get-Date) - $migrationTime
+                
+                if ($elapsed.TotalHours -ge $soakHours) {
+                    $eligibleForCleanup += $ip
+                    Write-MigrationLog -Message "  $($ip.Name): Soak period complete" -Level "Information"
+                }
+                else {
+                    $remaining = $soakHours - $elapsed.TotalHours
+                    Write-MigrationLog -Message "  $($ip.Name): $([Math]::Round($remaining, 1)) hours remaining" -Level "Information"
+                }
+            }
+        }
+        
+        if ($eligibleForCleanup.Count -eq 0) {
+            Write-MigrationLog -Message "No IPs have completed soak period. Cannot proceed with cleanup." -Level "Warning"
+            return
+        }
+        
+        Write-MigrationLog -Message "`n$($eligibleForCleanup.Count) IPs eligible for cleanup" -Level "Information"
+        
+        # Prompt for confirmation unless in DryRun
+        if (-not $DryRun) {
+            Write-MigrationLog -Message "`nWARNING: This will permanently delete Basic public IP resources." -Level "Warning"
+            $confirmation = Read-Host "Type 'DELETE' to confirm cleanup"
+            
+            if ($confirmation -ne 'DELETE') {
+                Write-MigrationLog -Message "Cleanup cancelled by user" -Level "Warning"
+                return
+            }
+        }
+        
+        # Process cleanup
+        foreach ($ip in $eligibleForCleanup) {
+            try {
+                Write-MigrationLog -Message "`nCleaning up: $($ip.Name)" -Level "Information"
+                
+                if ($DryRun) {
+                    Write-MigrationLog -Message "  [DRY RUN] Would delete Basic IP: $($ip.Name)" -Level "Information"
+                    if ($ip.ConsumerType -eq 'nic' -and $ip.NicName) {
+                        Write-MigrationLog -Message "  [DRY RUN] Would remove IP config from NIC: $($ip.NicName)" -Level "Information"
+                    }
+                }
+                else {
+                    $ipConfigName = "ipconfig-$($ip.Name)"
+                    Remove-BasicPublicIp -BasicIpName $ip.Name -BasicIpResourceGroup $ip.ResourceGroup -NicName $ip.NicName -NicResourceGroup $ip.NicResourceGroup -IpConfigName $ipConfigName
+                    
+                    $ip.MigrationStatus = "completed"
+                    $script:SuccessCount++
+                    Write-MigrationLog -Message "  Basic IP removed successfully" -Level "Information"
+                }
+            }
+            catch {
+                $script:ErrorCount++
+                Write-MigrationLog -Message "  ERROR cleaning up $($ip.Name): $($_.Exception.Message)" -Level "Error" -Exception $_.Exception
+            }
+        }
+        
+        if (-not $DryRun) {
+            $inventory | Export-Csv -Path $latestInventory -NoTypeInformation -Force
+        }
+        
+        Write-MigrationLog -Message "`n=== CLEANUP SUMMARY ===" -Level "Information"
+        Write-MigrationLog -Message "Eligible: $($eligibleForCleanup.Count)" -Level "Information"
+        Write-MigrationLog -Message "Success: $script:SuccessCount" -Level "Information"
+        Write-MigrationLog -Message "Errors: $script:ErrorCount" -Level "Information"
+        
+    }
+    catch {
+        Write-MigrationLog -Message "Cleanup phase failed: $($_.Exception.Message)" -Level "Error" -Exception $_.Exception
+        throw
+    }
+}
 
 # Main execution
 try {
@@ -78,32 +456,25 @@ try {
     Write-MigrationLog -Message "Dry Run: $DryRun" -Level "Information"
     Write-MigrationLog -Message "Configuration: $ConfigPath" -Level "Information"
     
+    if ($DryRun) {
+        Write-MigrationLog -Message "`n*** DRY RUN MODE ENABLED ***" -Level "Warning"
+        Write-MigrationLog -Message "No changes will be made to Azure resources" -Level "Warning"
+        Write-MigrationLog -Message "*** ********************** ***`n" -Level "Warning"
+    }
+    
     # Execute requested phase
     switch ($Phase) {
         'Discovery' {
-            Write-MigrationLog -Message "=== PHASE: DISCOVERY ===" -Level "Information"
-            $inventory = Get-BasicPublicIps
-            if ($inventory.Count -gt 0) {
-                $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-                $script:InventoryFile = Join-Path -Path (Split-Path $ConfigPath -Parent) -ChildPath "..\Output\inventory_$timestamp.csv"
-                Export-MigrationInventory -Inventory $inventory -OutputPath $script:InventoryFile
-                Write-MigrationLog -Message "Discovery complete. Inventory: $script:InventoryFile" -Level "Information"
-            }
+            Invoke-DiscoveryPhase
         }
         'Create' {
-            Write-MigrationLog -Message "=== PHASE: CREATE STANDARD PUBLIC IPs ===" -Level "Information"
-            Write-MigrationLog -Message "Implementation: Load inventory, create Standard IPs, add to NICs" -Level "Information"
-            Write-MigrationLog -Message "Please refer to full implementation in repository" -Level "Warning"
+            Invoke-CreatePhase
         }
         'Validate' {
-            Write-MigrationLog -Message "=== PHASE: VALIDATE ===" -Level "Information"
-            Write-MigrationLog -Message "Implementation: Test connectivity, NSG, DNS" -Level "Information"
-            Write-MigrationLog -Message "Please refer to full implementation in repository" -Level "Warning"
+            Invoke-ValidatePhase
         }
         'Cleanup' {
-            Write-MigrationLog -Message "=== PHASE: CLEANUP ===" -Level "Information"
-            Write-MigrationLog -Message "Implementation: Remove Basic IPs after soak period" -Level "Information"
-            Write-MigrationLog -Message "Please refer to full implementation in repository" -Level "Warning"
+            Invoke-CleanupPhase
         }
         'Full' {
             Write-MigrationLog -Message "Full workflow requires manual intervention between phases" -Level "Warning"
@@ -111,10 +482,24 @@ try {
         }
     }
     
-    Write-MigrationLog -Message "`nExecution completed" -Level "Information"
-    exit 0
+    $endTime = Get-Date
+    $duration = $endTime - $Global:MigrationStartTime
+    
+    Write-MigrationLog -Message "`n=== EXECUTION SUMMARY ===" -Level "Information"
+    Write-MigrationLog -Message "Duration: $([Math]::Round($duration.TotalMinutes, 2)) minutes" -Level "Information"
+    Write-MigrationLog -Message "Log file: $Global:LogFile" -Level "Information"
+    
+    if ($script:ErrorCount -gt 0) {
+        Write-MigrationLog -Message "Completed with $script:ErrorCount error(s)" -Level "Warning"
+        exit 1
+    }
+    else {
+        Write-MigrationLog -Message "Execution completed successfully" -Level "Information"
+        exit 0
+    }
 }
 catch {
-    Write-MigrationLog -Message "Fatal error: $($_.Exception.Message)" -Level "Error" -Exception $_.Exception
+    Write-MigrationLog -Message "`n=== FATAL ERROR ===" -Level "Error"
+    Write-MigrationLog -Message $_.Exception.Message -Level "Error" -Exception $_.Exception
     exit 1
 }
