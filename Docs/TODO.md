@@ -1,50 +1,123 @@
-# Azure Public IP Migration - Implementation TODO
+# Azure Public IP Migration - TODO
 
-## Current Status
-✅ Project structure created
-✅ Configuration file created
-✅ Common functions module completed
-✅ Main migration script framework created
-✅ Validation and rollback script frameworks created
-✅ Documentation structure established
+## Implementation Stages
 
-## Immediate Tasks (Week 1)
+### Stage 1: Environment Setup ✓
+- [x] Create project directory structure
+- [x] Create configuration file template
+- [x] Document prerequisites
+- [x] Create README with setup instructions
+- [x] Initialize Git repository
+
+### Stage 2: Core Functionality
+
+#### Discovery Phase ✓
+- [x] Implement Basic IP discovery function
+- [x] Parse IP configuration details
+- [x] Identify consumer resources (NIC/LB/VPN)
+- [x] Export inventory to CSV
+- [x] Generate summary reports
+
+#### Create Phase
+- [x] Implement Standard IP creation
+- [x] Configure IP properties (static, zones)
+- [x] Add secondary IP config to NICs
+- [x] Batch processing logic
+- [ ] Complete full implementation with error handling
+- [ ] Add progress indicators
+- [ ] Test with production IPs
+
+#### Validation Phase
+- [x] Connectivity testing (ICMP, TCP)
+- [x] NSG rule validation
+- [x] DNS resolution checks
+- [x] Generate validation reports
+- [ ] Add HTTP/HTTPS endpoint testing
+- [ ] Test with real workloads
+
+#### Cleanup Phase
+- [x] Soak period validation
+- [x] Remove Basic IP configs
+- [x] Delete Basic IP resources
+- [x] Confirmation prompts
+- [ ] Test cleanup process
+- [ ] Verify no service disruption
+
+### Stage 3: Testing and Deployment
+
+#### Testing
+- [ ] Test Discovery phase in production subscription
+- [ ] Test Create phase with 2-3 test IPs
+- [ ] Validate connectivity after creation
+- [ ] Test rollback procedures
+- [ ] Document test results
+
+#### Production Migration Schedule
+- [ ] Week 1 (Oct 3-9): East US - 5 IPs
+- [ ] Week 2 (Oct 10-16): West US Batch 1 - 5 IPs
+- [ ] Week 3 (Oct 17-23): West US Batch 2 - 4 IPs
+- [ ] Week 4 (Oct 24-30): West US 2 and West US 3 - 3 IPs
+- [ ] Week 5 (Oct 31-Nov 6): Final validation and cleanup
+
+### Stage 4: Documentation
+
+#### User Documentation
+- [x] README with quick start
+- [x] Configuration guide
+- [x] Requirements specification
+- [ ] Video walkthrough (optional)
+- [ ] FAQ document
+
+#### Technical Documentation
+- [x] Inline code comments
+- [x] Function descriptions
+- [x] Parameter documentation
+- [ ] Architecture diagram
+- [ ] Troubleshooting guide
+
+## Priority Tasks (Next 2 Weeks)
 
 ### High Priority
-1. [ ] Test Discovery phase in production subscription
-   - Run: `.\Migrate-BasicToStandardIP.ps1 -ConfigPath ..\Config\migration-config.json -Phase Discovery`
-   - Verify all Basic IPs are found
-   - Review inventory CSV output
-
-2. [ ] Review and update configuration
-   - Update subscription ID if needed
-   - Configure batch size and soak period
-   - Set DNS zone information
-
-3. [ ] Test Create phase with 1-2 test IPs
-   - Use dry run mode first
-   - Verify Standard IP creation
-   - Check secondary IP config on NICs
-
-4. [ ] Complete full implementation of migration phases
-   - Expand Create phase logic (currently stub)
-   - Expand Validate phase logic (currently stub)
-   - Expand Cleanup phase logic (currently stub)
-
-5. [ ] Initialize Git repository and push to GitHub
-   - See section below for Git setup
+1. [ ] Review and test discovery phase
+2. [ ] Validate configuration file with actual subscription
+3. [ ] Test create phase with 1-2 non-production IPs
+4. [ ] Document any issues or modifications needed
+5. [ ] Create detailed runbook for production execution
 
 ### Medium Priority
-6. [ ] Add retry logic for API failures
-7. [ ] Implement progress indicators
-8. [ ] Add NSG rule detailed validation
-9. [ ] Create HTML report generation
-10. [ ] Document special cases (LB, VPN Gateway)
+6. [ ] Set up monitoring for migration process
+7. [ ] Prepare DNS update procedures
+8. [ ] Create communication plan for stakeholders
+9. [ ] Schedule maintenance windows if needed
+10. [ ] Prepare rollback procedures
 
-## Git Repository Setup
+### Low Priority
+11. [ ] Create PowerBI dashboard for tracking
+12. [ ] Document lessons learned
+13. [ ] Plan for Load Balancer migrations (if any)
+14. [ ] Plan for VPN Gateway migrations (if any)
+
+## Known Issues and Notes
+
+### Issue #1: Large Script Files
+**Status**: Resolved  
+**Description**: PowerShell scripts are modular with Common-Functions library  
+**Resolution**: Core functions in Common-Functions.ps1, phase logic in main script
+
+### Issue #2: Full Implementation Pending
+**Status**: In Progress  
+**Description**: Main migration script phases need full implementation  
+**Note**: Discovery phase is complete and functional. Create, Validate, and Cleanup phases have framework but need full logic implementation.
+
+### Issue #3: GitHub Repository
+**Status**: Pending  
+**Description**: Need to initialize Git and push to GitHub  
+**Action**: See instructions below
+
+## Git and GitHub Setup
 
 ### Initialize Local Repository
-```bash
+```powershell
 cd D:\dev2\basic-to-standard-ip-azure
 git init
 git add .
@@ -52,118 +125,68 @@ git commit -m "Initial commit: Azure Basic to Standard IP migration tool"
 ```
 
 ### Create GitHub Repository
-```bash
-# Using GitHub CLI (gh)
-gh repo create basic-to-standard-ip-azure --public --source=. --remote=origin --push
-
-# OR manually:
-# 1. Go to https://github.com/new
-# 2. Repository name: basic-to-standard-ip-azure
-# 3. Description: "Automated PowerShell tool for migrating Azure Basic SKU Public IPs to Standard SKU with zero downtime"
-# 4. Public repository
-# 5. Do NOT initialize with README (we have one)
-# 6. Create repository
-# 7. Follow instructions to push existing repository
-```
+1. Go to https://github.com/new
+2. Repository name: `basic-to-standard-ip-azure`
+3. Description: "Automated PowerShell tool for migrating Azure Basic SKU Public IPs to Standard SKU with zero downtime"
+4. Public or Private (recommend Private for security)
+5. Do NOT initialize with README (we have one)
 
 ### Push to GitHub
-```bash
+```powershell
 git remote add origin https://github.com/YOUR_USERNAME/basic-to-standard-ip-azure.git
 git branch -M main
 git push -u origin main
 ```
 
-## Migration Execution Plan
+## Migration Execution Checklist
 
-### Week 1: Testing and Validation
-- [ ] Complete implementation of all phases
-- [ ] Test discovery in dev/test subscription
-- [ ] Dry run on 2-3 test IPs
-- [ ] Validate rollback capability
-- [ ] Document any issues found
+### Pre-Migration
+- [ ] Backup current IP configurations
+- [ ] Document all DNS entries
+- [ ] Notify stakeholders of migration schedule
+- [ ] Lower DNS TTL to 60-120 seconds (48 hours before)
+- [ ] Verify all prerequisites installed
+- [ ] Test scripts in dry-run mode
 
-### Week 2: East US Migration
-- [ ] Lower DNS TTL for East US IPs (48h before)
+### During Migration
 - [ ] Run Discovery phase
-- [ ] Run Create phase (5 IPs batch)
+- [ ] Review inventory output
+- [ ] Run Create phase (start with small batch)
 - [ ] Run Validate phase
 - [ ] Update DNS records
-- [ ] Monitor for 48-hour soak period
+- [ ] Monitor services during soak period
 
-### Week 3: East US Cleanup + West US Start
-- [ ] Run Cleanup for East US
-- [ ] Verify East US migration complete
-- [ ] Start West US batch 1 (5 IPs)
+### Post-Migration
+- [ ] Verify all services operational
+- [ ] Run final validation
+- [ ] Run Cleanup phase
+- [ ] Restore DNS TTL to normal
+- [ ] Document completion
+- [ ] Archive logs and reports
 
-### Week 4-5: Complete All Regions
-- [ ] West US batch 2
-- [ ] West US 2 (2 IPs)
-- [ ] West US 3 (1 IP)
+## Next Steps
 
-### Week 6: Final Validation
-- [ ] Verify all migrations complete
-- [ ] Delete any remaining Basic IPs
-- [ ] Document lessons learned
+1. **Complete Script Implementation**
+   - Finish Create phase with full batch processing
+   - Implement Validate phase with all tests
+   - Complete Cleanup phase with safeguards
 
-## Known Issues and Limitations
+2. **Testing**
+   - Test in development subscription first
+   - Run through full workflow with test IPs
+   - Validate rollback procedures
 
-### Issue #1: Stub Implementations
-**Status**: In Progress
-**Description**: Main migration phases (Create, Validate, Cleanup) are currently stubs
-**Action Required**: Complete full implementations
-**Priority**: Critical
+3. **GitHub Setup**
+   - Initialize Git repository
+   - Create GitHub repo
+   - Push code and documentation
 
-### Issue #2: Load Balancer Migration Not Automated
-**Status**: By Design
-**Description**: Basic LB upgrades require manual process per Microsoft guidance
-**Workaround**: Follow Microsoft LB upgrade documentation
-**Priority**: Medium
+4. **Production Preparation**
+   - Schedule migration windows
+   - Prepare stakeholder communications
+   - Document emergency contacts
 
-### Issue #3: VPN Gateway Migration Not Automated
-**Status**: By Design
-**Description**: VPN Gateway migrations require manual process
-**Workaround**: Follow Microsoft VPN Gateway migration documentation
-**Priority**: Medium
-
-## File Structure Status
-
-```
-✅ basic-to-standard-ip-azure/
-├── ✅ Config/
-│   └── ✅ migration-config.json
-├── ✅ Scripts/
-│   ├── ✅ Common-Functions.ps1 (COMPLETE)
-│   ├── ⚠️ Migrate-BasicToStandardIP.ps1 (NEEDS EXPANSION)
-│   ├── ⚠️ Validate-Migration.ps1 (NEEDS EXPANSION)
-│   └── ⚠️ Rollback-Migration.ps1 (NEEDS EXPANSION)
-├── ✅ Docs/
-│   ├── ✅ REQUIREMENTS.md
-│   ├── ✅ TODO.md (this file)
-│   ├── ⏳ FUTURE.md (in progress)
-│   └── ⏳ Full README.md (in progress)
-├── ✅ Logs/
-├── ✅ Output/
-├── ✅ .gitignore
-└── ✅ README.md (short version)
-```
-
-Legend:
-- ✅ Complete
-- ⚠️ Partial/Needs Work
-- ⏳ In Progress
-- ❌ Not Started
-
-## Next Actions (Priority Order)
-
-1. **Complete implementation stubs** - Expand Create, Validate, Cleanup phases
-2. **Test Discovery phase** - Verify it works in target subscription
-3. **Initialize Git repository** - Push to GitHub
-4. **Run dry run tests** - Test with 1-2 IPs in non-production
-5. **Begin production migration** - Start with East US
-
-## Notes
-- Always use dry run mode for initial testing
-- Keep inventory CSV files for audit trail
-- Monitor logs after each phase
-- Have rollback plan ready
-- Document any deviations from plan
+5. **Execute Migration**
+   - Follow phased approach (5 IPs per week)
+   - Monitor closely during soak periods
+   - Document any issues or learnings
