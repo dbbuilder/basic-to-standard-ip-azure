@@ -1,4 +1,7 @@
-# Azure Public IP Migration - TODO
+# Azure Public IP Migration - Implementation TODO
+
+## Current Status
+Project scaffolding complete. Core functions implemented. Ready for testing and deployment.
 
 ## Implementation Stages
 
@@ -7,186 +10,119 @@
 - [x] Create configuration file template
 - [x] Document prerequisites
 - [x] Create README with setup instructions
-- [x] Initialize Git repository
+- [x] Implement Common-Functions module
+- [x] Create main migration orchestrator
+- [x] Create validation script
+- [x] Create rollback script
 
-### Stage 2: Core Functionality
+### Stage 2: Testing and Validation
+- [ ] Test discovery phase in dev subscription
+- [ ] Validate Create phase with 2-3 test IPs
+- [ ] Test validation phase
+- [ ] Test rollback functionality
+- [ ] Verify NSG validation logic
+- [ ] Test batch processing
+- [ ] Validate error handling
 
-#### Discovery Phase ✓
-- [x] Implement Basic IP discovery function
-- [x] Parse IP configuration details
-- [x] Identify consumer resources (NIC/LB/VPN)
-- [x] Export inventory to CSV
-- [x] Generate summary reports
+### Stage 3: Production Migration
 
-#### Create Phase
-- [x] Implement Standard IP creation
-- [x] Configure IP properties (static, zones)
-- [x] Add secondary IP config to NICs
-- [x] Batch processing logic
-- [ ] Complete full implementation with error handling
+#### Week 1: Pilot Migration
+- [ ] Run discovery in production
+- [ ] Review inventory for accuracy
+- [ ] Select 2-3 pilot IPs (low risk)
+- [ ] Execute Create phase for pilot
+- [ ] Monitor for 48 hours
+- [ ] Complete cleanup for pilot
+
+#### Week 2: East US Region
+- [ ] Migrate East US IPs (5 total)
+- [ ] AppArizona-ip
+- [ ] AppCentral-ip
+- [ ] AppEastern-ip
+- [ ] AppMountain-ip
+- [ ] AppPacific-ip
+
+#### Week 3: West US Region (Batch 1)
+- [ ] Migrate first batch (5 IPs)
+- [ ] DataCentral-ip
+- [ ] DataEastern-ip
+- [ ] dataMountain-ip
+- [ ] DataPacific-ip
+- [ ] MJTest-ip
+
+#### Week 4: West US Region (Batch 2)
+- [ ] Migrate second batch (4 IPs)
+- [ ] DBWebip565
+- [ ] SVWeb-ip
+- [ ] TestVM-ip
+- [ ] SunCity-ClubTrack
+
+#### Week 5: West US 2 and West US 3
+- [ ] West US 2: Windermere-vm-ip, DEVVM-ip
+- [ ] West US 3: SunCityWest-VM-ip
+
+#### Week 6: Final Validation
+- [ ] Verify all migrations complete
+- [ ] Generate final reports
+- [ ] Archive logs and documentation
+- [ ] Update configuration management
+
+### Stage 4: Enhancements (Post-Migration)
+- [ ] Add full Create phase implementation
+- [ ] Add full Validate phase implementation
+- [ ] Add full Cleanup phase implementation
+- [ ] Implement retry logic with exponential backoff
 - [ ] Add progress indicators
-- [ ] Test with production IPs
+- [ ] Enhance NSG validation (parse rules)
+- [ ] Add DNS propagation checker
+- [ ] Create HTML reports
 
-#### Validation Phase
-- [x] Connectivity testing (ICMP, TCP)
-- [x] NSG rule validation
-- [x] DNS resolution checks
-- [x] Generate validation reports
-- [ ] Add HTTP/HTTPS endpoint testing
-- [ ] Test with real workloads
-
-#### Cleanup Phase
-- [x] Soak period validation
-- [x] Remove Basic IP configs
-- [x] Delete Basic IP resources
-- [x] Confirmation prompts
-- [ ] Test cleanup process
-- [ ] Verify no service disruption
-
-### Stage 3: Testing and Deployment
-
-#### Testing
-- [ ] Test Discovery phase in production subscription
-- [ ] Test Create phase with 2-3 test IPs
-- [ ] Validate connectivity after creation
-- [ ] Test rollback procedures
-- [ ] Document test results
-
-#### Production Migration Schedule
-- [ ] Week 1 (Oct 3-9): East US - 5 IPs
-- [ ] Week 2 (Oct 10-16): West US Batch 1 - 5 IPs
-- [ ] Week 3 (Oct 17-23): West US Batch 2 - 4 IPs
-- [ ] Week 4 (Oct 24-30): West US 2 and West US 3 - 3 IPs
-- [ ] Week 5 (Oct 31-Nov 6): Final validation and cleanup
-
-### Stage 4: Documentation
-
-#### User Documentation
-- [x] README with quick start
-- [x] Configuration guide
-- [x] Requirements specification
-- [ ] Video walkthrough (optional)
-- [ ] FAQ document
-
-#### Technical Documentation
-- [x] Inline code comments
-- [x] Function descriptions
-- [x] Parameter documentation
-- [ ] Architecture diagram
-- [ ] Troubleshooting guide
+### Stage 5: Documentation
+- [ ] Complete full README.md
+- [ ] Add troubleshooting guide
+- [ ] Create video walkthrough
+- [ ] Document lessons learned
+- [ ] Update FUTURE.md with feedback
 
 ## Priority Tasks (Next 2 Weeks)
 
 ### High Priority
-1. [ ] Review and test discovery phase
-2. [ ] Validate configuration file with actual subscription
-3. [ ] Test create phase with 1-2 non-production IPs
-4. [ ] Document any issues or modifications needed
-5. [ ] Create detailed runbook for production execution
+1. [ ] Complete full implementation of Create phase
+2. [ ] Complete full implementation of Validate phase
+3. [ ] Complete full implementation of Cleanup phase
+4. [ ] Test in dev subscription end-to-end
+5. [ ] Document any issues found during testing
 
 ### Medium Priority
-6. [ ] Set up monitoring for migration process
-7. [ ] Prepare DNS update procedures
-8. [ ] Create communication plan for stakeholders
-9. [ ] Schedule maintenance windows if needed
-10. [ ] Prepare rollback procedures
+6. [ ] Add retry logic for API failures
+7. [ ] Implement progress indicators
+8. [ ] Add filtering by resource group
+9. [ ] Enhance error messages
+10. [ ] Create quick reference card
 
 ### Low Priority
-11. [ ] Create PowerBI dashboard for tracking
-12. [ ] Document lessons learned
-13. [ ] Plan for Load Balancer migrations (if any)
-14. [ ] Plan for VPN Gateway migrations (if any)
+11. [ ] Add HTML reporting
+12. [ ] Create PowerBI dashboard
+13. [ ] Add email notifications
+14. [ ] Build web UI (future)
 
-## Known Issues and Notes
-
-### Issue #1: Large Script Files
-**Status**: Resolved  
-**Description**: PowerShell scripts are modular with Common-Functions library  
-**Resolution**: Core functions in Common-Functions.ps1, phase logic in main script
-
-### Issue #2: Full Implementation Pending
-**Status**: In Progress  
-**Description**: Main migration script phases need full implementation  
-**Note**: Discovery phase is complete and functional. Create, Validate, and Cleanup phases have framework but need full logic implementation.
-
-### Issue #3: GitHub Repository
-**Status**: Pending  
-**Description**: Need to initialize Git and push to GitHub  
-**Action**: See instructions below
-
-## Git and GitHub Setup
-
-### Initialize Local Repository
-```powershell
-cd D:\dev2\basic-to-standard-ip-azure
-git init
-git add .
-git commit -m "Initial commit: Azure Basic to Standard IP migration tool"
-```
-
-### Create GitHub Repository
-1. Go to https://github.com/new
-2. Repository name: `basic-to-standard-ip-azure`
-3. Description: "Automated PowerShell tool for migrating Azure Basic SKU Public IPs to Standard SKU with zero downtime"
-4. Public or Private (recommend Private for security)
-5. Do NOT initialize with README (we have one)
-
-### Push to GitHub
-```powershell
-git remote add origin https://github.com/YOUR_USERNAME/basic-to-standard-ip-azure.git
-git branch -M main
-git push -u origin main
-```
-
-## Migration Execution Checklist
-
-### Pre-Migration
-- [ ] Backup current IP configurations
-- [ ] Document all DNS entries
-- [ ] Notify stakeholders of migration schedule
-- [ ] Lower DNS TTL to 60-120 seconds (48 hours before)
-- [ ] Verify all prerequisites installed
-- [ ] Test scripts in dry-run mode
-
-### During Migration
-- [ ] Run Discovery phase
-- [ ] Review inventory output
-- [ ] Run Create phase (start with small batch)
-- [ ] Run Validate phase
-- [ ] Update DNS records
-- [ ] Monitor services during soak period
-
-### Post-Migration
-- [ ] Verify all services operational
-- [ ] Run final validation
-- [ ] Run Cleanup phase
-- [ ] Restore DNS TTL to normal
-- [ ] Document completion
-- [ ] Archive logs and reports
+## Known Issues
+- Main migration phases (Create, Validate, Cleanup) have stub implementations
+- Full logic is documented in comments but needs completion
+- NSG validation is basic - needs rule parsing
+- DNS propagation not verified automatically
 
 ## Next Steps
+1. Expand stub implementations to full working code
+2. Test thoroughly in non-production environment
+3. Run pilot migration with 2-3 IPs
+4. Proceed with phased rollout per schedule
+5. Monitor and document results
 
-1. **Complete Script Implementation**
-   - Finish Create phase with full batch processing
-   - Implement Validate phase with all tests
-   - Complete Cleanup phase with safeguards
-
-2. **Testing**
-   - Test in development subscription first
-   - Run through full workflow with test IPs
-   - Validate rollback procedures
-
-3. **GitHub Setup**
-   - Initialize Git repository
-   - Create GitHub repo
-   - Push code and documentation
-
-4. **Production Preparation**
-   - Schedule migration windows
-   - Prepare stakeholder communications
-   - Document emergency contacts
-
-5. **Execute Migration**
-   - Follow phased approach (5 IPs per week)
-   - Monitor closely during soak periods
-   - Document any issues or learnings
+## Notes
+- All core infrastructure is in place
+- Common functions module is complete and functional
+- Discovery phase is fully implemented
+- Configuration system is working
+- Logging framework is operational
+- The project is ready for implementation completion

@@ -1,7 +1,10 @@
 # Azure Public IP Migration Tool - Complete Documentation
 
+## Overview
+Comprehensive PowerShell and Azure CLI solution for migrating Azure Basic SKU Public IPs to Standard SKU with zero downtime before the September 30, 2025 retirement deadline.
+
 ## Table of Contents
-1. [Overview](#overview)
+1. [Quick Start](#quick-start)
 2. [Prerequisites](#prerequisites)
 3. [Installation](#installation)
 4. [Configuration](#configuration)
@@ -11,136 +14,93 @@
 8. [Troubleshooting](#troubleshooting)
 9. [Best Practices](#best-practices)
 
-## Overview
+## Quick Start
 
-This tool automates the migration of Azure Basic SKU Public IPs to Standard SKU before the **September 30, 2025** retirement deadline. It implements a zero-downtime dual-IP overlap strategy to ensure continuous service availability.
+```powershell
+# 1. Install prerequisites
+Install-Module -Name Az.Network, Az.Resources, Az.Accounts -Scope CurrentUser
 
-### Key Features
-- **Zero-downtime migration** using dual-IP overlap
-- **Automated discovery** of all Basic SKU public IPs
-- **Batch processing** with configurable delays
-- **Comprehensive validation** (connectivity, DNS, NSG)
-- **Rollback capability** for safety
-- **Detailed logging and reporting**
-- **Dry run mode** for testing
+# 2. Login to Azure
+az login
+Connect-AzAccount
 
-### Migration Strategy
+# 3. Configure
+# Edit Config\migration-config.json with your subscription details
 
-The tool uses a **dual-IP overlap** approach:
+# 4. Discover Basic IPs
+cd Scripts
+.\Migrate-BasicToStandardIP.ps1 -ConfigPath ..\Config\migration-config.json -Phase Discovery
 
-1. **Create Phase**: Standard IPs added as secondary configs (Basic IP stays active)
-2. **Validate Phase**: Test connectivity, NSG rules, DNS
-3. **DNS Cutover**: Update DNS to Standard IP (manual step)
-4. **Soak Period**: Monitor for 48 hours with both IPs active
-5. **Cleanup Phase**: Remove Basic IP after successful validation
+# 5. Create Standard IPs (dry run first)
+.\Migrate-BasicToStandardIP.ps1 -ConfigPath ..\Config\migration-config.json -Phase Create -DryRun
 
-This ensures that:
-- No service interruption occurs
-- Traffic can be quickly reverted if issues arise
-- DNS propagation happens gradually
-- Monitoring can detect issues before committing
+# 6. Create Standard IPs
+.\Migrate-BasicToStandardIP.ps1 -ConfigPath ..\Config\migration-config.json -Phase Create
+
+# 7. Validate
+.\Migrate-BasicToStandardIP.ps1 -ConfigPath ..\Config\migration-config.json -Phase Validate
+
+# 8. Update DNS (manual - use exported CSV)
+
+# 9. Wait 48 hours (soak period)
+
+# 10. Cleanup
+.\Migrate-BasicToStandardIP.ps1 -ConfigPath ..\Config\migration-config.json -Phase Cleanup
+```
 
 ## Prerequisites
 
 ### Software Requirements
-
-1. **PowerShell 7.0 or higher**
-   ```powershell
-   # Check version
-   $PSVersionTable.PSVersion
-   
-   # Install if needed
-   winget install Microsoft.PowerShell
-   ```
-
-2. **Azure CLI 2.60.0 or higher**
-   ```powershell
-   # Check version
-   az --version
-   
-   # Install if needed
-   winget install Microsoft.AzureCLI
-   ```
-
-3. **PowerShell Az Modules**
-   ```powershell
-   # Install required modules
-   Install-Module -Name Az.Network -Scope CurrentUser -Force
-   Install-Module -Name Az.Resources -Scope CurrentUser -Force
-   Install-Module -Name Az.Accounts -Scope CurrentUser -Force
-   ```
+- **PowerShell 7.0+** - [Download](https://github.com/PowerShell/PowerShell/releases)
+- **Azure CLI 2.60+** - [Download](https://docs.microsoft.com/cli/azure/install-azure-cli)
+- **PowerShell Modules**:
+  - Az.Network
+  - Az.Resources
+  - Az.Accounts
 
 ### Azure Permissions
+- Network Contributor on resource groups
+- Reader on subscription
+- DNS Zone Contributor (if using Azure DNS automation)
 
-Minimum required permissions:
-- **Network Contributor** on resource groups containing public IPs
-- **Reader** on subscription (for discovery)
-- **DNS Zone Contributor** (if using Azure DNS automation)
-
-### Network Requirements
-- Outbound internet access to Azure management endpoints
-- Azure CLI and PowerShell authentication configured
-
-## Installation
-
-### From GitHub
+### Installation
 
 ```powershell
-# Clone repository
-git clone https://github.com/dbbuilder/basic-to-standard-ip-azure.git
-cd basic-to-standard-ip-azure
+# Install PowerShell 7 (Windows)
+winget install Microsoft.PowerShell
 
-# Verify structure
-Get-ChildItem -Recurse
-```
+# Install Azure CLI (Windows)
+winget install Microsoft.AzureCLI
 
-### From Local Copy
+# Install Azure PowerShell modules
+Install-Module -Name Az.Network -Scope CurrentUser -Force
+Install-Module -Name Az.Resources -Scope CurrentUser -Force
+Install-Module -Name Az.Accounts -Scope CurrentUser -Force
 
-```powershell
-# Copy to desired location
-Copy-Item -Path "D:\dev2\basic-to-standard-ip-azure" -Destination "C:\AzureIPMigration" -Recurse
-
-# Navigate to directory
-cd C:\AzureIPMigration
+# Verify installations
+pwsh --version
+az --version
+Get-Module -ListAvailable Az.*
 ```
 
 ## Configuration
 
-### Edit Configuration File
-
-1. Open `Config\migration-config.json`
-2. Update the following settings:
+Edit `Config\migration-config.json`:
 
 ```json
 {
   "subscriptionId": "YOUR-SUBSCRIPTION-ID",
-  "subscriptionName": "YOUR-SUBSCRIPTION-NAME",
   "migration": {
-    "batchSize": 5,                    // IPs per batch
-    "delayBetweenBatchesMinutes": 30,  // Wait between batches
-    "soakPeriodHours": 48,             // Monitoring period
-    "useZones": false,                 // Availability zones
-    "zones": []                        // e.g., ["1","2","3"]
+    "soakPeriodHours": 48,
+    "batchSize": 5,
+    "delayBetweenBatchesMinutes": 30
   }
 }
 ```
 
-### Key Configuration Options
-
-| Setting | Description | Default | Recommendation |
-|---------|-------------|---------|----------------|
-| `batchSize` | IPs processed per batch | 5 | Start with 5, increase after success |
-| `soakPeriodHours` | Monitoring before cleanup | 48 | Minimum 48 hours recommended |
-| `delayBetweenBatchesMinutes` | Wait between batches | 30 | Adjust based on team capacity |
-| `useZones` | Enable availability zones | false | Set true for production workloads |
-| `dnsTtlSeconds` | DNS TTL for cutover | 120 | Lower for faster propagation |
-
 ## Usage
 
 ### Authentication
-
-Before running any commands, authenticate to Azure:
-
 ```powershell
 # Azure CLI
 az login
@@ -151,323 +111,236 @@ Connect-AzAccount
 Set-AzContext -SubscriptionId "YOUR-SUBSCRIPTION-ID"
 ```
 
-### Basic Workflow
-
-```powershell
-cd Scripts
-
-# 1. Discover all Basic public IPs
-.\Migrate-BasicToStandardIP.ps1 `
-    -ConfigPath ..\Config\migration-config.json `
-    -Phase Discovery
-
-# 2. Review inventory
-cd ..\Output
-notepad inventory_*.csv
-
-# 3. Create Standard IPs (DRY RUN first!)
-cd ..\Scripts
-.\Migrate-BasicToStandardIP.ps1 `
-    -ConfigPath ..\Config\migration-config.json `
-    -Phase Create `
-    -DryRun
-
-# 4. Create Standard IPs (actual)
-.\Migrate-BasicToStandardIP.ps1 `
-    -ConfigPath ..\Config\migration-config.json `
-    -Phase Create
-
-# 5. Validate migration
-.\Migrate-BasicToStandardIP.ps1 `
-    -ConfigPath ..\Config\migration-config.json `
-    -Phase Validate
-
-# 6. Update DNS manually (use inventory CSV for IP mapping)
-
-# 7. Wait for soak period (48 hours)
-
-# 8. Cleanup Basic IPs
-.\Migrate-BasicToStandardIP.ps1 `
-    -ConfigPath ..\Config\migration-config.json `
-    -Phase Cleanup
-```
-
-## Migration Phases
-
-### Phase 1: Discovery
-
-**Purpose**: Identify all Basic SKU public IPs in the subscription
-
-**Command**:
+### Discovery Phase
+Discover all Basic SKU public IPs:
 ```powershell
 .\Migrate-BasicToStandardIP.ps1 -ConfigPath ..\Config\migration-config.json -Phase Discovery
 ```
 
-**Output**:
-- `Output\inventory_TIMESTAMP.csv` - Complete inventory with:
-  - IP names, addresses, resource groups, locations
-  - Consumer types (NIC, Load Balancer, VPN Gateway, etc.)
-  - DNS information
-  - Migration status
+**Output**: `Output\inventory_TIMESTAMP.csv`
 
-**What to Review**:
-- Total count of Basic IPs
-- Consumer types distribution
-- Special cases (Load Balancers, VPN Gateways)
-- DNS configuration
-
-### Phase 2: Create
-
-**Purpose**: Create Standard SKU public IPs and add as secondary configurations
-
-**Command**:
+### Create Phase
+Create Standard IPs and add as secondary configurations:
 ```powershell
-# Always dry run first!
+# Dry run first
 .\Migrate-BasicToStandardIP.ps1 -ConfigPath ..\Config\migration-config.json -Phase Create -DryRun
 
-# Then actual creation
+# Actual creation
 .\Migrate-BasicToStandardIP.ps1 -ConfigPath ..\Config\migration-config.json -Phase Create
 ```
 
-**Actions Performed**:
-1. Creates Standard SKU public IP for each Basic IP
-2. Adds Standard IP as secondary configuration on NICs
-3. Validates NSG rules exist
-4. Updates inventory with Standard IP details
-
-**Duration**: ~5-10 minutes per IP (including delays)
-
-**Output**:
-- Standard public IPs created
-- Secondary IP configs on NICs
-- Updated inventory CSV
-- Detailed logs in `Logs\` directory
-
-### Phase 3: Validate
-
-**Purpose**: Verify Standard IPs are accessible and configured correctly
-
-**Command**:
+### Validate Phase
+Test connectivity and configuration:
 ```powershell
 .\Migrate-BasicToStandardIP.ps1 -ConfigPath ..\Config\migration-config.json -Phase Validate
 ```
 
-**Tests Performed**:
-- ICMP ping to Standard IP
-- TCP port connectivity (80, 443)
-- NSG rule validation
-- DNS resolution checks
-
-**Output**:
-- `Output\validation_report_TIMESTAMP.csv`
-- Pass/fail status for each IP
-- Connectivity test results
-
-### Phase 4: DNS Cutover (Manual)
-
-**Purpose**: Update DNS records to point to Standard IPs
-
-**Process**:
-1. Review `inventory_TIMESTAMP.csv` for IP mappings
-2. Lower DNS TTL to 60-120 seconds (48 hours before cutover)
-3. Update A records to Standard IP addresses
+### DNS Update (Manual)
+1. Review `Output\inventory_TIMESTAMP.csv`
+2. Update DNS A records to Standard IP addresses
+3. Set TTL to 60-120 seconds
 4. Monitor DNS propagation
-5. Verify traffic flows through Standard IPs
 
-**Tools**:
-- Name.com web interface
-- Azure DNS (if applicable)
-- `nslookup` / `Resolve-DnsName` for verification
-
-### Phase 5: Soak Period
-
-**Purpose**: Monitor services for 48 hours before cleanup
-
-**Actions**:
-- Monitor application logs for errors
-- Check Azure Monitor metrics
-- Verify traffic patterns
-- Ensure no alerts triggered
-
-**Duration**: 48 hours (configurable)
-
-### Phase 6: Cleanup
-
-**Purpose**: Remove Basic public IPs after successful migration
-
-**Command**:
+### Cleanup Phase
+Remove Basic IPs after soak period:
 ```powershell
 .\Migrate-BasicToStandardIP.ps1 -ConfigPath ..\Config\migration-config.json -Phase Cleanup
 ```
 
-**Safety Checks**:
-- Validates soak period has elapsed
-- Requires confirmation (type 'DELETE')
-- Removes IP configs from NICs first
-- Deletes Basic IP resources
+## Migration Strategy
 
-**Output**:
-- Basic IPs removed
-- Final inventory status: "completed"
+### Dual-IP Overlap
+1. **Create**: Standard IP added as secondary (Basic stays active)
+2. **Validate**: Test new IP
+3. **DNS Cutover**: Update DNS to Standard IP
+4. **Soak**: Monitor both IPs for 48 hours
+5. **Cleanup**: Remove Basic IP
+
+### Why This Approach?
+- Zero downtime - traffic continues on Basic IP during cutover
+- Safe rollback - can revert DNS if issues occur
+- Gradual transition - DNS propagation happens naturally
+- No hard cutover - no connection resets
 
 ## Special Cases
 
 ### Load Balancers
+Basic Load Balancers must be upgraded separately:
+1. Use Microsoft's LB upgrade scripts
+2. Create Standard LB
+3. Migrate backend pool
+4. Attach Standard public IP
+5. Delete Basic LB
 
-**Issue**: Basic Load Balancers cannot use Standard public IPs
-
-**Solution**:
-1. Identified during Discovery phase
-2. Upgrade Load Balancer to Standard first
-3. Follow Microsoft's LB upgrade guide
-4. Then migrate public IPs
-
-**Reference**: https://learn.microsoft.com/azure/load-balancer/upgrade-basic-standard
+**Reference**: [Azure LB Upgrade Guide](https://learn.microsoft.com/azure/load-balancer/upgrade-basic-standard)
 
 ### VPN Gateways
+VPN Gateways require gateway migration:
+1. Plan maintenance window
+2. Migrate to AZ SKU
+3. Reconfigure tunnels
+4. Attach Standard public IP
 
-**Issue**: VPN Gateways require specific migration process
-
-**Solution**:
-1. Identified during Discovery phase
-2. Follow VPN Gateway migration to AZ SKUs
-3. Requires maintenance window
-4. Reconfigure tunnels after migration
-
-**Reference**: https://learn.microsoft.com/azure/vpn-gateway/vpn-gateway-about-vpn-gateway-settings
+**Reference**: [VPN Gateway Migration](https://learn.microsoft.com/azure/vpn-gateway/vpn-gateway-about-vpn-gateway-settings)
 
 ### Application Gateways
-
-**Issue**: Application Gateways have specific requirements
-
-**Solution**:
-1. Review Azure documentation for App Gateway migration
-2. May require recreation in some scenarios
-3. Contact Azure support if uncertain
+Application Gateways handle migration internally during updates. Consult Azure support.
 
 ## Troubleshooting
 
 ### Common Issues
 
-#### Issue 1: "Azure CLI not found"
-**Solution**:
+**Issue**: "Azure CLI not found"
 ```powershell
+# Solution
 winget install Microsoft.AzureCLI
-# Restart PowerShell
 az --version
 ```
 
-#### Issue 2: "PowerShell module not found"
-**Solution**:
+**Issue**: "PowerShell module not found"
 ```powershell
+# Solution
 Install-Module -Name Az.Network -Scope CurrentUser -Force
 Import-Module Az.Network
 ```
 
-#### Issue 3: "Unauthorized" or "Forbidden" errors
-**Solution**:
+**Issue**: "Unauthorized" errors
 ```powershell
-# Re-authenticate
+# Solution
 az login
 Connect-AzAccount
-
 # Verify permissions
 az role assignment list --assignee YOUR_USER_ID
 ```
 
-#### Issue 4: "Standard IP creation fails"
-**Possible Causes**:
-- Quota exceeded in region
-- Invalid configuration
-- Name already in use
+**Issue**: Standard IP creation fails
+- Check Azure quotas
+- Verify region supports Standard SKU
+- Review error in logs
 
-**Solution**:
-```powershell
-# Check quotas
-az network list-usages --location eastus --output table
-
-# Review error in logs
-Get-Content ..\Logs\migration_*.log | Select-String "ERROR"
-```
-
-#### Issue 5: "NSG validation fails"
-**Solution**:
+**Issue**: NSG validation fails
 - Standard IPs require explicit NSG allow rules
-- Check NSG attached to NIC or subnet
-- Add required inbound rules for your services
-
-```powershell
-# View NSG rules
-az network nsg rule list --resource-group YOUR_RG --nsg-name YOUR_NSG --output table
-```
+- Check NSG on NIC or subnet
+- Add inbound rules for required ports
 
 ### Log Analysis
-
-View detailed logs:
 ```powershell
-# Latest log
-Get-Content ..\Logs\migration_*.log -Tail 100
+# View latest log
+Get-Content .\Logs\migration_*.log -Tail 100
 
 # Search for errors
-Select-String -Path ..\Logs\migration_*.log -Pattern "ERROR"
+Select-String -Path .\Logs\migration_*.log -Pattern "ERROR"
 
 # Filter by IP name
-Select-String -Path ..\Logs\migration_*.log -Pattern "AppArizona-ip"
+Select-String -Path .\Logs\migration_*.log -Pattern "AppArizona-ip"
 ```
 
 ## Best Practices
 
-### Planning
-1. **Start Small**: Begin with 1-2 test IPs in non-production
-2. **Use Dry Run**: Always test with `-DryRun` first
-3. **Schedule Wisely**: Run during low-traffic periods
-4. **Communicate**: Inform stakeholders of migration schedule
+1. **Always Test with Dry Run**
+   - Run with `-DryRun` flag first
+   - Verify expected actions
 
-### Execution
-1. **Batch Sizing**: Start with small batches (5 IPs), increase after success
-2. **DNS Preparation**: Lower TTL 48 hours before cutover
-3. **Monitoring**: Set up alerts for error rates and availability
-4. **Documentation**: Keep notes of each migration batch
+2. **Start Small**
+   - Begin with low-risk IPs
+   - Test rollback procedures
+   - Build confidence before large-scale migration
 
-### Safety
-1. **Backup Plans**: Have rollback procedure documented and tested
-2. **Validation**: Thoroughly test Standard IPs before DNS cutover
-3. **Soak Period**: Don't skip the monitoring period
-4. **Logs**: Retain logs for audit trail
+3. **DNS Preparation**
+   - Lower TTL 48 hours before migration
+   - Plan cutover during low-traffic periods
+   - Have rollback plan ready
 
-### Post-Migration
-1. **Verify**: Confirm all Basic IPs removed
-2. **Document**: Record lessons learned
-3. **Update**: Update runbooks and documentation
-4. **Cleanup**: Remove temporary resources
+4. **Monitor During Soak**
+   - Use Azure Monitor for metrics
+   - Check application logs
+   - Verify no error rate increase
+   - Test from multiple locations
 
-## Support and Resources
+5. **Document Everything**
+   - Keep inventory CSV files
+   - Save validation reports
+   - Archive logs
+   - Note any manual interventions
+
+6. **Have Rollback Plan**
+   - Test rollback script before production
+   - Know how to revert DNS quickly
+   - Have contact list for escalation
+   - Schedule migrations during support hours
+
+## Security Considerations
+
+1. **Authentication**
+   - Use Azure AD authentication
+   - Enable MFA
+   - Rotate credentials regularly
+
+2. **Permissions**
+   - Follow least privilege principle
+   - Use RBAC effectively
+   - Audit permission changes
+
+3. **Network Security**
+   - Standard IPs deny by default
+   - Configure NSG rules before cutover
+   - Use service tags where possible
+   - Enable DDoS Protection Standard
+
+4. **Logging**
+   - Enable Azure Activity Log
+   - Configure log retention (90 days minimum)
+   - Export logs to SIEM if available
+   - Review logs regularly
+
+## Output Files
+
+### Inventory CSV
+**Location**: `Output\inventory_TIMESTAMP.csv`
+
+**Fields**: Name, ResourceGroup, Location, IpAddress, StandardIpAddress, ConsumerType, MigrationStatus, Notes
+
+### Validation Report
+**Location**: `Output\validation_report_TIMESTAMP.csv`
+
+**Fields**: Name, StandardIpAddress, ConnectivityTest, NsgValidation, DnsResolution, OverallStatus
+
+### Log Files
+**Location**: `Logs\migration_TIMESTAMP.log`
+
+All operations with timestamps, error details, execution summary
+
+## Support Resources
 
 ### Microsoft Resources
-- [Basic IP Retirement](https://azure.microsoft.com/updates/upgrade-to-standard-sku-public-ip-addresses-in-azure-by-30-september-2025-basic-sku-will-be-retired/)
-- [Migration Guidance](https://learn.microsoft.com/azure/virtual-network/ip-services/public-ip-basic-upgrade-guidance)
-- [Public IP Documentation](https://learn.microsoft.com/azure/virtual-network/ip-services/public-ip-addresses)
+- [Basic IP Retirement Announcement](https://azure.microsoft.com/updates/upgrade-to-standard-sku-public-ip-addresses-in-azure-by-30-september-2025-basic-sku-will-be-retired/)
+- [Migration Guide](https://learn.microsoft.com/azure/virtual-network/ip-services/public-ip-basic-upgrade-guidance)
+- [Load Balancer Upgrade](https://learn.microsoft.com/azure/load-balancer/upgrade-basic-standard)
+- [Standard IP Documentation](https://learn.microsoft.com/azure/virtual-network/ip-services/public-ip-addresses)
 
-### Project Resources
-- **GitHub**: https://github.com/dbbuilder/basic-to-standard-ip-azure
-- **Issues**: https://github.com/dbbuilder/basic-to-standard-ip-azure/issues
-- **Documentation**: See `Docs\` directory
-
-### Getting Help
-1. Review logs in `Logs\` directory
-2. Check validation reports in `Output\` directory
-3. Consult TODO.md for known issues
-4. Open GitHub issue with:
-   - Error message
-   - Relevant log excerpts
-   - Configuration (sanitized)
-   - Steps to reproduce
+### Project Documentation
+- **REQUIREMENTS.md** - Technical requirements specification
+- **TODO.md** - Implementation roadmap and tasks
+- **FUTURE.md** - Future enhancements and vision
 
 ## License
-
 This tool is provided as-is for Azure public IP migration purposes.
 
+## Changelog
+
+### Version 1.0.0 (2025-09-29)
+- Initial release
+- Discovery, Create, Validate, Cleanup phases (stubs)
+- Rollback capability
+- Dry run mode
+- Comprehensive logging and error handling
+- Common functions library complete
+- Configuration system
+- Documentation suite
+
+## Contributors
+Ted (School Vision) - Project Lead
+
 ---
-**Last Updated**: 2025-09-29
-**Version**: 1.0.0
-**Repository**: https://github.com/dbbuilder/basic-to-standard-ip-azure
+
+For issues or questions, review logs and documentation. For Azure-specific questions, consult Microsoft documentation links above.
