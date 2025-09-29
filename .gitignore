@@ -1,0 +1,19 @@
+# Logs
+Logs/*.log
+
+# Output files
+Output/*.csv
+Output/*.txt
+
+# PowerShell temp files
+*.ps1~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo

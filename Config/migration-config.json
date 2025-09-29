@@ -1,0 +1,58 @@
+{
+  "subscriptionId": "7ad813f6-5b95-449a-b341-e1c1854d9d67",
+  "subscriptionName": "School Vision Client Subscription",
+  "migration": {
+    "tagKey": "sv-migration",
+    "tagValue": "basic-to-standard-2025",
+    "standardSkuAllocationMethod": "Static",
+    "standardSkuVersion": "IPv4",
+    "useZones": false,
+    "zones": [],
+    "soakPeriodHours": 48,
+    "dnsUpdateEnabled": false,
+    "azureDnsZone": "schoolvision.net",
+    "azureDnsResourceGroup": "RG_DNS",
+    "dnsTtlSeconds": 120,
+    "batchSize": 5,
+    "delayBetweenBatchesMinutes": 30
+  },
+  "publicIps": {
+    "eastUS": [
+      "AppArizona-ip",
+      "AppCentral-ip",
+      "AppEastern-ip",
+      "AppMountain-ip",
+      "AppPacific-ip"
+    ],
+    "westUS": [
+      "DataCentral-ip",
+      "DataEastern-ip",
+      "dataMountain-ip",
+      "DataPacific-ip",
+      "MJTest-ip",
+      "DBWebip565",
+      "SVWeb-ip",
+      "TestVM-ip",
+      "SunCity-ClubTrack"
+    ],
+    "westUS2": [
+      "Windermere-vm-ip",
+      "DEVVM-ip"
+    ],
+    "westUS3": [
+      "SunCityWest-VM-ip"
+    ]
+  },
+  "logging": {
+    "logLevel": "Information",
+    "logRetentionDays": 90,
+    "enableConsoleOutput": true,
+    "enableFileOutput": true
+  },
+  "validation": {
+    "healthCheckTimeoutSeconds": 300,
+    "healthCheckRetries": 3,
+    "validateNsgRules": true,
+    "validateDnsResolution": true
+  }
+}
