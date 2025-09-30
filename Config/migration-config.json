@@ -1,6 +1,9 @@
 {
   "subscriptionId": "7ad813f6-5b95-449a-b341-e1c1854d9d67",
   "subscriptionName": "School Vision Client Subscription",
+  "scanAllSubscriptions": true,
+  "includeSubscriptions": [],
+  "excludeSubscriptions": [],
   "migration": {
     "tagKey": "sv-migration",
     "tagValue": "basic-to-standard-2025",
