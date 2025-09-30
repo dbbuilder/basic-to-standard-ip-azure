@@ -184,6 +184,7 @@ function Write-MigrationLog {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$Message,
         
         [Parameter(Mandatory = $false)]
@@ -195,7 +196,14 @@ function Write-MigrationLog {
     )
     
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logEntry = "[$timestamp] [$Level] $Message"
+    
+    # Handle empty messages for blank lines
+    if ([string]::IsNullOrWhiteSpace($Message)) {
+        $logEntry = ""
+    }
+    else {
+        $logEntry = "[$timestamp] [$Level] $Message"
+    }
     
     # Add exception details if provided
     if ($Exception) {
